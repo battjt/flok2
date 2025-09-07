@@ -150,13 +150,13 @@ pub fn main() -> Result<()> {
 struct FlokForm {
     name: Input,
     table: JoeTable<FlokTableModel>,
-    flok: BusinessObject<Flok>,
+    flok: BusinessObject<Flok, Flok>,
 }
 
 impl FlokForm {
     fn create(flok: Flok) -> Self {
-        let business_object = BusinessObject::new(flok);
-        let animals = business_object.map(|f| &mut f.animals);
+        let business_object = BusinessObject::new(Arc::new(Mutex::new(flok)));
+        let animals = business_object.map(Box::new(|f| &mut f.animals));
         Self {
             name: Default::default(),
             table: JoeTable::new(FlokTableModel::new(animals)),
@@ -169,15 +169,15 @@ impl FlokForm {
 }
 
 trait Editor<T> {
-    fn set_value<V: BusObj<T>>(&mut self, value: V);
+    fn set_value(&mut self, value: BusinessObject<Flok, T>);
     fn commit(&mut self);
 }
 struct FlokTableModel {
-    animals: Reference<Flok, Vec<Animal>>,
+    animals: BusinessObject<Flok, Vec<Animal>>,
     edit_buttons: HashMap<i32, Widget>,
 }
 impl FlokTableModel {
-    fn new(animals: Reference<Flok, Vec<Animal>>) -> Self {
+    fn new(animals: BusinessObject<Flok, Vec<Animal>>) -> Self {
         Self {
             animals,
             edit_buttons: Default::default(),
@@ -235,7 +235,7 @@ impl SimpleModel for FlokTableModel {
                 .entry(row)
                 .or_insert_with(|| {
                     let mut b = Button::default().with_size(30, 20).with_label("Edit");
-                    let r = self.animals.clone();
+                    let r = self.animals;
                     b.set_callback(move |_| {
                         let mut form = AnimalForm::create(
                             r.map(move |f: &mut Vec<Animal>| &mut f[row as usize]),
@@ -272,10 +272,10 @@ struct AnimalForm {
     sex: Choice,
     born: DateInput,
     description: Input,
-    animal: Reference<Flok, Animal>,
+    animal: BusinessObject<Flok, Animal>,
 }
-impl Editor< Animal> for AnimalForm {
-    fn set_value(&mut self, a: Reference<Flok, Animal>) {
+impl Editor<Animal> for AnimalForm {
+    fn set_value(&mut self, a: BusinessObject<Flok, Animal>) {
         a.exec(|a| {
             self.identity.set_value(&a.id.join(", "));
             self.sex.set_value(a.sex.ordinal() as i32);
@@ -320,7 +320,7 @@ where
 }
 
 impl AnimalForm {
-    fn create(animal: Reference<Flok, Animal>) -> Self {
+    fn create(animal: BusinessObject<Flok, Animal>) -> Self {
         let identity = row("Identity", Input::default());
         let mut sex_choices = Choice::default();
         sex_choices.add_choice("female");
