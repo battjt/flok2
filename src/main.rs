@@ -31,11 +31,12 @@ use simple_table::{
 use crate::flok::{Animal, Date, Sex};
 use crate::reference::*;
 
+
 mod flok;
 mod form;
 mod reference;
 
-pub fn main() -> Result<()> {
+ pub fn main() -> Result<()> {
     let app = app::App::default().with_scheme(app::Scheme::Plastic);
     app.set_visual(Mode::MultiSample | Mode::Alpha)?;
 
@@ -147,7 +148,7 @@ pub fn main() -> Result<()> {
     Ok(())
 }
 
-struct FlokForm {
+struct FlokForm<'a> {
     name: Input,
     table: JoeTable<FlokTableModel>,
     flok: BusinessObject<Flok, Flok>,
@@ -155,8 +156,8 @@ struct FlokForm {
 
 impl FlokForm {
     fn create(flok: Flok) -> Self {
-        let business_object = BusinessObject::new(Arc::new(Mutex::new(flok)));
-        let animals = business_object.map(Box::new(|f| &mut f.animals));
+        let business_object = BusinessObject::new(Arc::new(Mutex::new(flok)),|a|a);
+        let animals = business_object.map(Box::new(|mut f| &mut f.animals));
         Self {
             name: Default::default(),
             table: JoeTable::new(FlokTableModel::new(animals)),
@@ -283,7 +284,7 @@ impl Editor<Animal> for AnimalForm {
     }
 
     fn commit(&mut self) {
-        self.animal.exec(|animal| {
+        self.animal.exec(|mut animal| {
             let id = self
                 .identity
                 .value()

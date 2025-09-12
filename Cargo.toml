@@ -8,6 +8,7 @@ edition = "2021"
 name = "flok2"
 path = "src/main.rs"
 
+
 [dependencies]
 #simple_table = { version = "0.2.0", git = "https://github.com/SolidDesignNet/simple_table" }
 simple_table = { version = "0.2.0", path = "../can/simple_table" }
