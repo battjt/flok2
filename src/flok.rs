@@ -11,6 +11,14 @@ pub enum Sex {
     #[default]
     Female,
 }
+impl Sex {
+    pub fn name(&self) -> &str {
+        match self  {
+            Sex::Male => "Male",
+            Sex::Female => "Female",
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Event {
@@ -19,6 +27,7 @@ pub struct Event {
     pub date: Date,
     pub notes: String,
 }
+
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Animal {
     // first is most recent
@@ -37,5 +46,3 @@ pub struct Flok {
     pub name: String,
     pub animals: Vec<Animal>,
 }
-
-impl Flok {}
