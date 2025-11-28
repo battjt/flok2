@@ -12,7 +12,7 @@ pub(crate) trait BusinessObject: Sized + Clone {
         F: FnMut(&mut Self::Type) -> R;
 
     /// An inner reference to a business object without using fine grained locks.
-    fn map<F, X>(self, f: F) -> impl BusinessObject<Type = X>
+    fn map<F, X>( self, f: F) -> impl BusinessObject<Type = X>
     where
         F: Fn(&mut Self::Type) -> &mut X,
     {
@@ -84,7 +84,7 @@ mod test {
 
     #[test]
     pub(crate) fn joe() {
-        let b1 = Arc::new(Mutex::new(Person {
+        let person = Arc::new(Mutex::new(Person {
             name: "joe",
             address: Address {
                 street: "1526 S Base",
@@ -95,12 +95,18 @@ mod test {
                 },
             },
         }));
-        b1.exec(|person| eprintln!("person.name is {}", person.name));
+        person.exec(|person| eprintln!("person.name is {}", person.name));
 
-        let address = b1.map(|person| &mut person.address);
+        let (city, address) = {
+            // test letting the "original" fall out of scope
+            let address = person.map(|person| &mut person.address);
+            let city = address.clone().map(|address| &mut address.city);
+
+            (city.clone(), address.clone())
+        };
+
         address.exec(|v| eprintln!("address is {v:?}"));
-
-        let city = address.map(|address| &mut address.city);
+        address.exec(|v| eprintln!("address.city is {:?}", v.city));
         city.exec(|v| eprintln!("city is {v:?}"));
     }
 }

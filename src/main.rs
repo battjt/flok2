@@ -7,11 +7,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::Result;
+use anyhow::{Error, Result};
+use clap::Parser;
 use enum_ordinalize::Ordinalize;
 use flok::Flok;
 use fltk::{
     app::{self},
+    dialog::file_chooser,
     enums::Align,
     group::{Flex, FlexType, Grid},
 };
@@ -35,18 +37,28 @@ mod flok;
 
 mod business_obj;
 use business_obj::*;
-
+#[derive(clap::Parser)]
+struct Cli {
+    file: Option<String>,
+}
 pub fn main() -> Result<()> {
     let app = app::App::default().with_scheme(app::Scheme::Plastic);
     app.set_visual(Mode::MultiSample | Mode::Alpha)?;
 
     let mut wind = Window::default()
         .with_size(400, 600)
-        .with_label(&format!("Flok Editor {}", &env!("CARGO_PKG_VERSION")));
+        // FLTK expects the window label to be static
+        .with_label(format!("Flok Editor {}", &env!("CARGO_PKG_VERSION")).leak());
     let pack = Pack::default_fill();
     let mut menu = SysMenuBar::default().with_size(100, 35);
 
     let form = Arc::new(Mutex::new(FlokForm::create(Flok::default())));
+
+    if let Some(file) = Cli::parse().file {
+        eprintln!("Opening {file}");
+        *(form.lock().unwrap().flok.lock().unwrap()) = serde_json::from_reader(File::open(file)?)?;
+    }
+
     {
         let form = form.clone();
         menu.add(
@@ -54,29 +66,16 @@ pub fn main() -> Result<()> {
             Shortcut::None,
             menu::MenuFlag::Normal,
             move |_| {
-                let mut chooser = dialog::FileChooser::new(
-                    ".",                             // directory
-                    "*",                             // filter or pattern
-                    dialog::FileChooserType::Single, // chooser type
-                    "Restore DB",                    // title
-                );
-                chooser.window().set_pos(300, 300);
-                // Block until user picks something.
-                //     (The other way to do this is to use a callback())
-                //
-                while chooser.shown() {
-                    app::wait();
-                }
-                // User hit cancel?
-                if chooser.value(1).is_none() {
-                    println!("(User hit 'Cancel')");
-                    return;
-                }
-                let str = chooser.value(1).unwrap();
-                let file: File = File::open(str).unwrap();
-
-                let flok: Flok = serde_json::from_reader(file).unwrap();
-                form.lock().expect("Unable to lock editor").set_value(&flok);
+                (|| {
+                    if let Some(file) = file_chooser("File to save to", "*.flok", ".", true) {
+                        let flok: Flok = serde_json::from_reader(File::open(file)?)?;
+                        form.lock().unwrap().set_value(&flok);
+                    }
+                    Ok(())
+                })()
+                .unwrap_or_else(|err: Error| {
+                    fltk::dialog::alert_default(&format!("Unable to write file: {err}"));
+                })
             },
         );
     }
@@ -122,10 +121,18 @@ pub fn main() -> Result<()> {
             Shortcut::None,
             menu::MenuFlag::Normal,
             move |_| {
-                let mut form = form.lock().expect("Unable to lock flok");
-                form.commit();
-                let flok = form.flok.lock().unwrap();
-                serde_json::to_writer_pretty(stderr(), &*flok).unwrap();
+                (|| {
+                    if let Some(file) = file_chooser("File to save to", "*.flok", ".", true) {
+                        let mut form = form.lock().expect("Unable to lock flok");
+                        form.commit();
+                        let flok = form.flok.lock().unwrap();
+                        serde_json::to_writer_pretty(File::create(file)?, &*flok)?;
+                    }
+                    Ok(())
+                })()
+                .unwrap_or_else(|err: Error| {
+                    fltk::dialog::alert_default(&format!("Unable to write file: {err}"));
+                })
             },
         );
     }
@@ -250,9 +257,10 @@ impl SimpleModel for FlokTableModel {
                 .or_insert_with(|| {
                     let mut b = Button::default().with_size(30, 20).with_label("Edit");
                     b.set_callback(move |_| {
-                        let mut wind = Window::default()
-                            .with_size(600, 600)
-                            .with_label(&format!("Edit {}", a.exec(|a| a.description.to_string())));
+                        let mut wind = Window::default().with_size(600, 600).with_label(
+                            // leak() because fltk expects statics strings for window titles
+                            format!("Edit {}", a.exec(|a| a.description.to_string())).leak(),
+                        );
 
                         let mut page = Flex::default_fill()
                             .size_of_parent()
