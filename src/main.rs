@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{Error, Result};
+use anyhow::Result;
 use clap::Parser;
 use enum_ordinalize::Ordinalize;
 use flok::Flok;
@@ -53,7 +53,6 @@ pub fn main() -> Result<()> {
     let form = Arc::new(Mutex::new(FlokForm::create(Flok::default())));
 
     if let Some(file) = Cli::parse().file {
-        eprintln!("Opening {file}");
         *(form.lock().unwrap().flok.lock().unwrap()) = serde_json::from_reader(File::open(file)?)?;
     }
 
@@ -63,17 +62,17 @@ pub fn main() -> Result<()> {
             "&Action/@fileopen Load Records...\t",
             Shortcut::None,
             menu::MenuFlag::Normal,
+            move |_| display_error("Unable to load file", load_flok(form.clone())),
+        );
+    }
+    {
+        let form = form.clone();
+        menu.add(
+            "&Action/@filesave Save Records...\t",
+            Shortcut::None,
+            menu::MenuFlag::Normal,
             move |_| {
-                (|| {
-                    if let Some(file) = file_chooser("File to save to", "*.flok", ".", true) {
-                        let flok: Flok = serde_json::from_reader(File::open(file)?)?;
-                        form.lock().unwrap().set_value(&flok);
-                    }
-                    Ok(())
-                })()
-                .unwrap_or_else(|err: Error| {
-                    fltk::dialog::alert_default(&format!("Unable to read file: {err}"));
-                })
+                display_error("Unable to save file", save_flok(form.clone()));
             },
         );
     }
@@ -91,15 +90,14 @@ pub fn main() -> Result<()> {
         );
     }
     {
-        let flok = form.lock().unwrap().flok.clone();
         let form = form.clone();
         menu.add(
             "&Action/New Animal\t",
             Shortcut::None,
             menu::MenuFlag::Normal,
             move |_| {
-                let mut f = flok.lock().unwrap();
-                f.animals.push(Animal {
+                let mut flok_form = form.lock().unwrap();
+                flok_form.flok.lock().unwrap().animals.push(Animal {
                     id: vec!["new".to_string()],
                     born: None,
                     sire: None,
@@ -108,29 +106,7 @@ pub fn main() -> Result<()> {
                     description: "".to_string(),
                     sex: Sex::Female,
                 });
-                form.lock().unwrap().update();
-            },
-        );
-    }
-    {
-        let form = form.clone();
-        menu.add(
-            "&Action/@filesave Save Records...\t",
-            Shortcut::None,
-            menu::MenuFlag::Normal,
-            move |_| {
-                (|| {
-                    if let Some(file) = file_chooser("File to save to", "*.flok", ".", true) {
-                        let mut form = form.lock().expect("Unable to lock flok");
-                        form.commit();
-                        let flok = form.flok.lock().unwrap();
-                        serde_json::to_writer_pretty(File::create(file)?, &*flok)?;
-                    }
-                    Ok(())
-                })()
-                .unwrap_or_else(|err: Error| {
-                    fltk::dialog::alert_default(&format!("Unable to write file: {err}"));
-                })
+                flok_form.update();
             },
         );
     }
@@ -146,6 +122,31 @@ pub fn main() -> Result<()> {
     // run the app
     app.run().unwrap();
 
+    Ok(())
+}
+
+fn save_flok(form: Arc<Mutex<FlokForm>>) -> Result<()> {
+    if let Some(mut file) = file_chooser("File to save to", "*.flok", ".", true) {
+        if !file.ends_with(".flok") {
+            file = format!("{file}.flok")
+        }
+        let mut form = form.lock().expect("Unable to lock flok");
+        form.commit();
+        let flok = form.flok.lock().unwrap();
+        serde_json::to_writer_pretty(File::create(file)?, &*flok)?;
+    }
+    Ok(())
+}
+fn display_error<T>(action: &str, result: Result<T>) {
+    if let Err(err) = result {
+        fltk::dialog::alert_default(&format!("{action}: {err}"));
+    }
+}
+fn load_flok(form: Arc<Mutex<FlokForm>>) -> Result<()> {
+    if let Some(file) = file_chooser("File to load from", "*.flok", ".", true) {
+        let flok: Flok = serde_json::from_reader(File::open(file)?)?;
+        form.lock().unwrap().set_value(&flok);
+    }
     Ok(())
 }
 
