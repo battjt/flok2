@@ -3,7 +3,6 @@
 use std::{
     collections::HashMap,
     fs::File,
-    io::stderr,
     sync::{Arc, Mutex},
 };
 
@@ -19,7 +18,6 @@ use fltk::{
 };
 use fltk::{
     button::Button,
-    dialog,
     enums::{Mode, Shortcut},
     frame::Frame,
     group::Pack,
@@ -74,7 +72,7 @@ pub fn main() -> Result<()> {
                     Ok(())
                 })()
                 .unwrap_or_else(|err: Error| {
-                    fltk::dialog::alert_default(&format!("Unable to write file: {err}"));
+                    fltk::dialog::alert_default(&format!("Unable to read file: {err}"));
                 })
             },
         );
@@ -199,13 +197,12 @@ impl FlokTableModel {
         }
     }
 }
-const COLUMNS: [(&str, u32); 6] = [
+const COLUMNS: [(&str, u32); 5] = [
     ("ID", 60),
     ("Born", 60),
     ("Dame", 60),
     ("Description", 120),
     ("Edit", 40),
-    ("Junk", 20),
 ];
 impl SimpleModel for FlokTableModel {
     fn row_count(&mut self) -> usize {
