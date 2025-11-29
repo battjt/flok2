@@ -1,9 +1,7 @@
-use std::sync::Mutex;
-
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Starting with a Arc<Mutex<TYPE>>, the BusinessObject trait allows UI applications to pass around refereces without having to manage multiple mutexes. An alernative is to use mapped MutexGuards.
-pub(crate) trait BusinessObject: Sized + Clone {
+pub trait BusinessObject: Sized + Clone {
     type Type;
 
     /// Exeute any locking and dereferecing to get access to the reference.
@@ -12,7 +10,7 @@ pub(crate) trait BusinessObject: Sized + Clone {
         F: FnMut(&mut Self::Type) -> R;
 
     /// An inner reference to a business object without using fine grained locks.
-    fn map<F, X>( self, f: F) -> impl BusinessObject<Type = X>
+    fn map<F, X>(self, f: F) -> impl BusinessObject<Type = X>
     where
         F: Fn(&mut Self::Type) -> &mut X,
     {
@@ -37,9 +35,9 @@ impl<T: BusinessObject, X, FR: Fn(&mut T::Type) -> &mut X> BusinessObject
 }
 
 #[derive(Clone)]
-pub(crate) struct BusinessObjectRef<T: BusinessObject, X, F: Fn(&mut T::Type) -> &mut X> {
-    pub(crate) base: T,
-    pub(crate) function: F,
+struct BusinessObjectRef<T: BusinessObject, X, F: Fn(&mut T::Type) -> &mut X> {
+    base: T,
+    function: F,
 }
 
 impl<BASE> BusinessObject for Arc<Mutex<BASE>> {
@@ -57,33 +55,30 @@ impl<BASE> BusinessObject for Arc<Mutex<BASE>> {
 #[cfg(test)]
 #[allow(dead_code)]
 mod test {
-    use std::sync::Mutex;
-
-    use std::sync::Arc;
-
     use crate::business_obj::BusinessObject;
+    use std::sync::{Arc, Mutex};
 
     #[derive(Debug)]
-    pub(crate) struct City {
-        pub(crate) name: &'static str,
-        pub(crate) state: &'static str,
-        pub(crate) zip: u16,
+    struct City {
+        name: &'static str,
+        state: &'static str,
+        zip: u16,
     }
 
     #[derive(Debug)]
-    pub(crate) struct Address {
-        pub(crate) street: &'static str,
-        pub(crate) city: City,
+    struct Address {
+        street: &'static str,
+        city: City,
     }
 
     #[derive(Debug)]
-    pub(crate) struct Person {
-        pub(crate) name: &'static str,
-        pub(crate) address: Address,
+    struct Person {
+        name: &'static str,
+        address: Address,
     }
 
     #[test]
-    pub(crate) fn joe() {
+    fn joe() {
         let person = Arc::new(Mutex::new(Person {
             name: "joe",
             address: Address {
