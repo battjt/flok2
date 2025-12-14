@@ -2,7 +2,7 @@ use fltk::{
     button::Button,
     enums::Align,
     frame::Frame,
-    group::{Flex, FlexType},
+    group::{Flex, FlexType, Pack, PackType},
     input::Input,
     prelude::{GroupExt, InputExt, WidgetBase, WidgetExt},
     widget::Widget,
@@ -18,6 +18,7 @@ use std::{
 use crate::{animal_form::*, business_obj::*, flok::*, form::*};
 
 pub struct FlokForm {
+    pub pack: Pack,
     pub name: Input,
     pub table: JoeTable<FlokTableModel>,
     pub flok: Arc<Mutex<Flok>>,
@@ -27,9 +28,14 @@ impl FlokForm {
     pub fn create(flok: Flok) -> Self {
         let flok = Arc::new(Mutex::new(flok));
         let model = FlokTableModel::new(flok.clone());
+        let pack = Pack::default_fill().with_type(PackType::Vertical);
+        let name = Default::default();
         let table = JoeTable::new(model);
+        pack.resizable(&*table);
+        pack.end();
         Self {
-            name: Default::default(),
+            pack,
+            name,
             table,
             flok,
         }

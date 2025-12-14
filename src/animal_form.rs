@@ -32,6 +32,8 @@ pub struct AnimalForm<A: BusinessObject<Type = Animal>> {
     pub born: DateInput,
     pub description: Input,
     pub animal: A,
+    pub dame: Input,
+    pub sire: Input,
 }
 
 impl<A: BusinessObject<Type = Animal>> Editor<A> for AnimalForm<A> {
@@ -44,20 +46,21 @@ impl<A: BusinessObject<Type = Animal>> Editor<A> for AnimalForm<A> {
             .set_value(&a.exec(move |a| a.born.map(|d| d.to_string()).unwrap_or("".to_string())));
         self.description
             .set_value(&a.exec(|a| a.description.clone()));
+        self.sire.set_value(&a.exec(|a| a.sire.clone().unwrap_or("".to_string()))); 
+        self.dame.set_value(&a.exec(|a| a.dame.clone().unwrap_or("".to_string())));
     }
 
     fn commit(&mut self) {
         self.animal.exec(|animal| {
-            let id = self
+            animal.id = self
                 .identity
                 .value()
                 .split(',')
                 .map(|s| s.trim().to_owned())
                 .collect();
-            animal.id = id;
             animal.born = self.born.get_date();
-            animal.sire = None;
-            animal.dame = None;
+            animal.sire = if self.sire.value().is_empty() { None } else { Some(self.sire.value()) };
+            animal.dame = if self.dame.value().is_empty() { None } else { Some(self.dame.value()) };
             animal.description = self.description.value();
             animal.events = Vec::default();
             animal.sex = Sex::from_ordinal(self.sex.value() as i8).unwrap_or_default();
@@ -79,6 +82,8 @@ impl<A: BusinessObject<Type = Animal>> AnimalForm<A> {
             born: DateInput::default(),
             description: Input::default(),
             animal,
+            dame: Input::default(),
+            sire: Input::default(),
         };
 
         let ui = create_form(vec![
@@ -86,6 +91,8 @@ impl<A: BusinessObject<Type = Animal>> AnimalForm<A> {
             ("Sex", &form.sex),
             ("Born", &form.born.input),
             ("Description", &form.description),
+            ("Sire", &form.sire),
+            ("Dame", &form.dame),
         ])?;
 
         Ok((form, ui))

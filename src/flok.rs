@@ -13,7 +13,7 @@ pub enum Sex {
 }
 impl Sex {
     pub fn name(&self) -> &str {
-        match self  {
+        match self {
             Sex::Male => "Male",
             Sex::Female => "Female",
         }
@@ -40,9 +40,18 @@ pub struct Animal {
     pub sex: Sex,
 }
 
-impl Animal {}
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Flok {
     pub name: String,
     pub animals: Vec<Animal>,
+}
+
+impl Flok {
+    pub fn find(&self, id: Id) -> Option<&Animal> {
+        self.animals.iter().find(|a| a.id.contains(&id))
+    }
+    pub fn dame(&self, id: Id) -> Option<Id> {
+        self.find(id).and_then(|a| a.dame.clone())
+    }
+
 }

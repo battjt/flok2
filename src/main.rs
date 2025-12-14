@@ -11,19 +11,23 @@ use fltk::{
     prelude::{GroupExt, MenuExt, WidgetBase, WidgetExt},
     window::Window,
 };
+use mermaid_rs::Mermaid;
 use std::{
     fs::File,
+    io::Write,
     sync::{Arc, Mutex},
 };
 
+mod animal_form;
 mod business_obj;
 mod flok;
-mod form;
 mod flok_form;
-mod animal_form;
+mod form;
 
 use flok::*;
 use form::*;
+
+use crate::business_obj::BusinessObject;
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -38,7 +42,9 @@ pub fn main() -> Result<()> {
         // FLTK expects the window label to be static
         .with_label(format!("Flok Editor {}", &env!("CARGO_PKG_VERSION")).leak());
     let pack = Pack::default_fill();
-    let mut menu = SysMenuBar::default().with_size(100, 35);
+
+    let mut menu = SysMenuBar::default().with_size(0, 35);
+    menu.end();
 
     let form = Arc::new(Mutex::new(flok_form::FlokForm::create(Flok::default())));
 
@@ -98,12 +104,47 @@ pub fn main() -> Result<()> {
             },
         );
     }
-    menu.end();
-    // let widget = &form.lock().unwrap().table.as_base_widget();
-    // pack.add(widget);
+    {
+        let form = form.clone();
+        menu.add(
+            "&Action/Dame Report\t",
+            Shortcut::None,
+            menu::MenuFlag::Normal,
+            move |_| {
+                let mut flok_form = form.lock().unwrap();
+                flok_form.flok.exec(|f| {
+                    // find all animals with no dame
+                    let tree = f
+                        .animals
+                        .iter()
+                        .map(|a| a.dame.clone())
+                        .filter(|d| d.is_some());
+
+                    let file = "/tmp/temp.svg";
+                    let mut out = File::create(file).expect("Unable to open file");
+                    let mermaid = Mermaid::new().unwrap(); // An error may occur if the embedded Chromium instance fails to initialize
+                    let input = "graph TB\n".to_string()
+                        + &tree
+                            .flatten()
+                            .map(|id| tree_fn(f, &id, &mut vec![]))
+                            .collect::<String>();
+                    File::create("tree")
+                        .expect("Unable to open file")
+                        .write_all(input.as_bytes())
+                        .expect("Failed to write");
+                    let render = mermaid.render(&input).unwrap();
+                    out.write_all(render.as_bytes()).expect("Failed to write");
+                    webbrowser::open(&("file://".to_owned() + file))
+                        .expect("failed to open browser");
+                });
+            },
+        );
+    }
+
+    pack.resizable(&form.lock().unwrap().pack);
     pack.end();
 
-    //wind.resizable(widget);
+    wind.resizable(&pack);
     wind.end();
     wind.show();
 
@@ -113,12 +154,38 @@ pub fn main() -> Result<()> {
     Ok(())
 }
 
+fn tree_fn(flok: &Flok, id: &Id, visited: &mut Vec<Id>) -> String {
+    if visited.contains(id) {
+        return String::new();
+    }
+    visited.push(id.clone());
+    if let Some(animal) = flok.find(id.clone()) {
+        let mut result = String::new();
+        if let Some(dame_id) = &animal.dame {
+            result += &format!("    \"{}\" --> \"{}\"\n", id, dame_id);
+            result += &tree_fn(flok, dame_id, visited);
+        }
+        if let Some(sire_id) = &animal.sire {
+            result += &format!("    \"{}\" --> \"{}\"\n", id, sire_id);
+            result += &tree_fn(flok, sire_id, visited);
+        }
+        result
+    } else {
+        String::new()
+    }
+}
+
+fn report(flok: Flok) {
+    todo!()
+}
+
 fn save_flok(form: Arc<Mutex<flok_form::FlokForm>>) -> Result<()> {
     if let Some(mut file) = file_chooser("File to save to", "*.flok", ".", true) {
         if !file.ends_with(".flok") {
             file += ".flok"
         }
         let mut form = form.lock().expect("Unable to lock flok");
+        // commit data from UI to data structure
         form.commit();
         let flok = form.flok.lock().unwrap();
         serde_json::to_writer_pretty(File::create(file)?, &*flok)?;
@@ -132,3 +199,5 @@ fn load_flok(form: Arc<Mutex<flok_form::FlokForm>>) -> Result<()> {
     }
     Ok(())
 }
+
+trait FlokBo: BusinessObject<Type = Flok> {}
