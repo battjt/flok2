@@ -1,6 +1,8 @@
 #![feature(mapped_lock_guards)]
 
 use anyhow::Result;
+use calamine::{DataType, Reader};
+use chrono::{Local, TimeZone};
 use clap::Parser;
 use fltk::{
     app::{self},
@@ -11,12 +13,16 @@ use fltk::{
     prelude::{GroupExt, MenuExt, WidgetBase, WidgetExt},
     window::Window,
 };
-use mermaid_rs::Mermaid;
+use layout::{
+    backends::svg::SVGWriter,
+    gv::{DotParser, GraphBuilder},
+};
 use std::{
     fs::File,
     io::Write,
     sync::{Arc, Mutex},
 };
+use tempfile::NamedTempFile;
 
 mod animal_form;
 mod business_obj;
@@ -95,7 +101,7 @@ pub fn main() -> Result<()> {
                     id: vec!["new".to_string()],
                     born: None,
                     sire: None,
-                    dame: None,
+                    dam: None,
                     events: vec![],
                     description: "".to_string(),
                     sex: Sex::Female,
@@ -107,36 +113,25 @@ pub fn main() -> Result<()> {
     {
         let form = form.clone();
         menu.add(
-            "&Action/Dame Report\t",
+            "&Action/Lineage Report\t",
             Shortcut::None,
             menu::MenuFlag::Normal,
             move |_| {
-                let mut flok_form = form.lock().unwrap();
-                flok_form.flok.exec(|f| {
-                    // find all animals with no dame
-                    let tree = f
-                        .animals
-                        .iter()
-                        .map(|a| a.dame.clone())
-                        .filter(|d| d.is_some());
-
-                    let file = "/tmp/temp.svg";
-                    let mut out = File::create(file).expect("Unable to open file");
-                    let mermaid = Mermaid::new().unwrap(); // An error may occur if the embedded Chromium instance fails to initialize
-                    let input = "graph TB\n".to_string()
-                        + &tree
-                            .flatten()
-                            .map(|id| tree_fn(f, &id, &mut vec![]))
-                            .collect::<String>();
-                    File::create("tree")
-                        .expect("Unable to open file")
-                        .write_all(input.as_bytes())
-                        .expect("Failed to write");
-                    let render = mermaid.render(&input).unwrap();
-                    out.write_all(render.as_bytes()).expect("Failed to write");
-                    webbrowser::open(&("file://".to_owned() + file))
-                        .expect("failed to open browser");
-                });
+                display_error(
+                    "Unable to report lineage",
+                    form.lock().unwrap().flok.exec(report_lineage),
+                );
+            },
+        );
+    }
+    {
+        let form = form.clone();
+        menu.add(
+            "&Action/Import...\t",
+            Shortcut::None,
+            menu::MenuFlag::Normal,
+            move |_| {
+                display_error("Unable to import file", import_flok(form.clone()));
             },
         );
     }
@@ -154,31 +149,6 @@ pub fn main() -> Result<()> {
     Ok(())
 }
 
-fn tree_fn(flok: &Flok, id: &Id, visited: &mut Vec<Id>) -> String {
-    if visited.contains(id) {
-        return String::new();
-    }
-    visited.push(id.clone());
-    if let Some(animal) = flok.find(id.clone()) {
-        let mut result = String::new();
-        if let Some(dame_id) = &animal.dame {
-            result += &format!("    \"{}\" --> \"{}\"\n", id, dame_id);
-            result += &tree_fn(flok, dame_id, visited);
-        }
-        if let Some(sire_id) = &animal.sire {
-            result += &format!("    \"{}\" --> \"{}\"\n", id, sire_id);
-            result += &tree_fn(flok, sire_id, visited);
-        }
-        result
-    } else {
-        String::new()
-    }
-}
-
-fn report(flok: Flok) {
-    todo!()
-}
-
 fn save_flok(form: Arc<Mutex<flok_form::FlokForm>>) -> Result<()> {
     if let Some(mut file) = file_chooser("File to save to", "*.flok", ".", true) {
         if !file.ends_with(".flok") {
@@ -192,6 +162,7 @@ fn save_flok(form: Arc<Mutex<flok_form::FlokForm>>) -> Result<()> {
     }
     Ok(())
 }
+
 fn load_flok(form: Arc<Mutex<flok_form::FlokForm>>) -> Result<()> {
     if let Some(file) = file_chooser("File to load from", "*.flok", ".", true) {
         let flok: Flok = serde_json::from_reader(File::open(file)?)?;
@@ -200,4 +171,94 @@ fn load_flok(form: Arc<Mutex<flok_form::FlokForm>>) -> Result<()> {
     Ok(())
 }
 
-trait FlokBo: BusinessObject<Type = Flok> {}
+fn import_flok(form: Arc<Mutex<flok_form::FlokForm>>) -> Result<()> {
+    if let Some(file) = file_chooser(
+        "File to load from",
+        "*.xlsx\t*.xls\t*.csv\t*.ods",
+        ".",
+        true,
+    ) {
+        let form_guard = form.lock().unwrap();
+        let mut flok_guard = form_guard.flok.lock().unwrap();
+        let mut wb = calamine::open_workbook_auto(file)?;
+        let sheet = &wb.worksheets()[0].1;
+        let headers = sheet
+            .headers()
+            .ok_or(anyhow::anyhow!("No headers found in sheet"))?;
+        for row in sheet.rows() {
+            let mut animal = Animal::default();
+            for (header, cell) in headers.iter().zip(row.iter()) {
+                match header.to_lowercase().as_str() {
+                    "id" => animal.id.push(cell.to_string()),
+                    "born" => {
+                        animal.born = cell
+                            .get_datetime()
+                            .and_then(|d| d.as_datetime())
+                            .map(|d| Local.from_local_datetime(&d).unwrap())
+                    }
+                    "sire" => animal.sire = some_string(cell.to_string()),
+                    "dam" => animal.dam = some_string(cell.to_string()),
+                    "sex" => animal.sex = Sex::from(cell.to_string()),
+                    _ => (),
+                }
+            }
+            eprintln!("Animal: {:?}", animal);
+            flok_guard.animals.push(animal);
+        }
+    }
+
+    Ok(())
+}
+
+fn some_string(to_string: String) -> Option<String> {
+    let t = to_string.trim();
+    if t.is_empty() {
+        None
+    } else {
+        Some(t.to_string())
+    }
+}
+
+fn report_lineage(f: &mut Flok) -> Result<()> {
+    let mut file = NamedTempFile::with_suffix(".svg")?;
+
+    let unknown = "unknown".to_string();
+    let input = "digraph {\n".to_string()
+        + "rankdir=LR;\n"
+        + &f.animals
+            .iter()
+            .map(|animal| {
+                let id = animal.id.first().unwrap_or(&unknown);
+                let mut result = String::new();
+                if let Some(dame_id) = &animal.dam {
+                    result += &format!("    {} -> {}\n", id, dame_id);
+                }
+                // if let Some(sire_id) = &animal.sire {
+                //     result += &format!("    {} -> {}\n", id, sire_id);
+                // }
+                result
+            })
+            .collect::<String>()
+        + "}\n";
+    let input = input.replace("?", "000").replace("#N/A", "000");
+    eprintln!("DOT:\n{}", input);
+
+    // Render the nodes to some rendering backend.
+    let gaph = match DotParser::new(input.as_str()).process() {
+        Ok(graph) => graph,
+        Err(e) => panic!("Unable to parse DOT: {}", e),
+    };
+    let mut graph_builder = GraphBuilder::new();
+    graph_builder.visit_graph(&gaph);
+    let mut visual_graph = graph_builder.get();
+
+    let mut svg = SVGWriter::new();
+    visual_graph.do_it(false, false, false, &mut svg);
+
+    file.as_file().write_all(svg.finalize().as_bytes())?;
+    file.disable_cleanup(true);
+
+    webbrowser::open(&("file://".to_owned() + file.path().to_str().unwrap()))?;
+
+    Ok(())
+}

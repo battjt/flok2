@@ -106,7 +106,7 @@ impl SimpleModel for FlokTableModel {
                 let r = match col {
                     0 => animal.id[0].clone(),
                     1 => animal.born.map(|b| b.to_string()).unwrap_or_default(),
-                    2 => animal.dame.clone().unwrap_or_default(),
+                    2 => animal.dam.clone().unwrap_or_default(),
                     3 => animal.description.clone(),
                     5 => "junk".to_string(),
                     _ => panic!(),

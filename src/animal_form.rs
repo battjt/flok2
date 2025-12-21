@@ -1,4 +1,5 @@
 use anyhow::Result;
+use chrono::{DateTime};
 use enum_ordinalize::Ordinalize;
 use fltk::{
     input::Input,
@@ -15,8 +16,10 @@ pub struct DateInput {
 }
 
 impl DateInput {
-    pub fn get_date(&self) -> Option<chrono::DateTime<chrono::Utc>> {
-        dateparser::parse(&self.input.value()).ok()
+    pub fn get_date(&self) -> Option<chrono::DateTime<chrono::Local>> {
+        dateparser::parse(&self.input.value())
+            .map(DateTime::from)
+            .ok()
     }
 }
 
@@ -46,8 +49,10 @@ impl<A: BusinessObject<Type = Animal>> Editor<A> for AnimalForm<A> {
             .set_value(&a.exec(move |a| a.born.map(|d| d.to_string()).unwrap_or("".to_string())));
         self.description
             .set_value(&a.exec(|a| a.description.clone()));
-        self.sire.set_value(&a.exec(|a| a.sire.clone().unwrap_or("".to_string()))); 
-        self.dame.set_value(&a.exec(|a| a.dame.clone().unwrap_or("".to_string())));
+        self.sire
+            .set_value(&a.exec(|a| a.sire.clone().unwrap_or("".to_string())));
+        self.dame
+            .set_value(&a.exec(|a| a.dam.clone().unwrap_or("".to_string())));
     }
 
     fn commit(&mut self) {
@@ -59,8 +64,16 @@ impl<A: BusinessObject<Type = Animal>> Editor<A> for AnimalForm<A> {
                 .map(|s| s.trim().to_owned())
                 .collect();
             animal.born = self.born.get_date();
-            animal.sire = if self.sire.value().is_empty() { None } else { Some(self.sire.value()) };
-            animal.dame = if self.dame.value().is_empty() { None } else { Some(self.dame.value()) };
+            animal.sire = if self.sire.value().is_empty() {
+                None
+            } else {
+                Some(self.sire.value())
+            };
+            animal.dam = if self.dame.value().is_empty() {
+                None
+            } else {
+                Some(self.dame.value())
+            };
             animal.description = self.description.value();
             animal.events = Vec::default();
             animal.sex = Sex::from_ordinal(self.sex.value() as i8).unwrap_or_default();
