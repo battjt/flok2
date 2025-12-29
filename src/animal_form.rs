@@ -36,7 +36,7 @@ pub struct AnimalForm<A: 'static + BusinessObject<Type = Animal>> {
     pub born: DateInput,
     pub description: Input,
     pub animal: A,
-    pub dame: Input,
+    pub dam: Input,
     pub sire: Input,
     pub events: JoeTable<EventTableModel<A>>,
 }
@@ -53,7 +53,7 @@ impl<A: BusinessObject<Type = Animal>> Editor<A> for AnimalForm<A> {
             .set_value(&a.exec(|a| a.description.clone()));
         self.sire
             .set_value(&a.exec(|a| a.sire.clone().unwrap_or("".to_string())));
-        self.dame
+        self.dam
             .set_value(&a.exec(|a| a.dam.clone().unwrap_or("".to_string())));
         self.events.model.lock().unwrap().animal = a.clone();
     }
@@ -73,10 +73,10 @@ impl<A: BusinessObject<Type = Animal>> Editor<A> for AnimalForm<A> {
             } else {
                 Some(self.sire.value())
             };
-            animal.dam = if self.dame.value().is_empty() {
+            animal.dam = if self.dam.value().is_empty() {
                 None
             } else {
-                Some(self.dame.value())
+                Some(self.dam.value())
             };
             animal.description = self.description.value();
             animal.events = e.clone();
@@ -102,7 +102,7 @@ impl<A: BusinessObject<Type = Animal>> AnimalForm<A> {
             born: DateInput::default(),
             description: Input::default(),
             animal: animal.clone(),
-            dame: Input::default(),
+            dam: Input::default(),
             sire: Input::default(),
             events,
         };
@@ -113,7 +113,7 @@ impl<A: BusinessObject<Type = Animal>> AnimalForm<A> {
             ("Born", &form.born.input),
             ("Description", &form.description),
             ("Sire", &form.sire),
-            ("Dame", &form.dame),
+            ("Dame", &form.dam),
             ("Events", &widget),
         ])?;
 

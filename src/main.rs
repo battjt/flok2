@@ -255,8 +255,8 @@ fn report_lineage(f: &mut Flok) -> Result<()> {
             .map(|animal| {
                 let id = animal.id.first().unwrap_or(&unknown);
                 let mut result = String::new();
-                if let Some(dame_id) = &animal.dam {
-                    result += &format!("    {} -> {}\n", id, dame_id);
+                if let Some(dam_id) = &animal.dam {
+                    result += &format!("    {} -> {}\n", id, dam_id);
                 }
                 // if let Some(sire_id) = &animal.sire {
                 //     result += &format!("    {} -> {}\n", id, sire_id);
