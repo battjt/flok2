@@ -29,6 +29,7 @@ mod business_obj;
 mod flok;
 mod flok_form;
 mod form;
+mod event_form;
 
 use flok::*;
 use form::*;
@@ -38,6 +39,8 @@ use crate::business_obj::BusinessObject;
 #[derive(clap::Parser)]
 struct Cli {
     file: Option<String>,
+    #[clap(long, short)]
+    import: Option<String>,
 }
 pub fn main() -> Result<()> {
     let app = app::App::default().with_scheme(app::Scheme::Plastic);
@@ -56,6 +59,10 @@ pub fn main() -> Result<()> {
 
     if let Some(file) = Cli::parse().file {
         *(form.lock().unwrap().flok.lock().unwrap()) = serde_json::from_reader(File::open(file)?)?;
+    }
+
+    if let Some(file) = Cli::parse().import {
+        import_file(form.clone(), file)?;
     }
 
     {
@@ -113,7 +120,7 @@ pub fn main() -> Result<()> {
     {
         let form = form.clone();
         menu.add(
-            "&Action/Lineage Report\t",
+            "&Action/Lineage Report (very slow)\t",
             Shortcut::None,
             menu::MenuFlag::Normal,
             move |_| {
@@ -178,18 +185,30 @@ fn import_flok(form: Arc<Mutex<flok_form::FlokForm>>) -> Result<()> {
         ".",
         true,
     ) {
-        let form_guard = form.lock().unwrap();
-        let mut flok_guard = form_guard.flok.lock().unwrap();
-        let mut wb = calamine::open_workbook_auto(file)?;
-        let sheet = &wb.worksheets()[0].1;
-        let headers = sheet
-            .headers()
-            .ok_or(anyhow::anyhow!("No headers found in sheet"))?;
-        for row in sheet.rows() {
-            let mut animal = Animal::default();
-            for (header, cell) in headers.iter().zip(row.iter()) {
-                match header.to_lowercase().as_str() {
-                    "id" => animal.id.push(cell.to_string()),
+        import_file(form, file)?;
+    }
+
+    Ok(())
+}
+
+fn import_file(form: Arc<Mutex<flok_form::FlokForm>>, file: String) -> Result<(), anyhow::Error> {
+    let form_guard = form.lock().unwrap();
+    let mut flok_guard = form_guard.flok.lock().unwrap();
+    let mut wb = calamine::open_workbook_auto(file)?;
+    let sheet = &wb.worksheets()[0].1;
+    let headers = sheet
+        .headers()
+        .ok_or(anyhow::anyhow!("No headers found in sheet"))?;
+    let now = Local::now();
+    for row in sheet.rows() {
+        let mut animal = Animal::default();
+        for (header, cell) in headers.iter().zip(row.iter()) {
+            let header = header.to_lowercase();
+            if header.starts_with("id:") {
+                animal.id.push(cell.to_string());
+            } else {
+                match header.as_str() {
+                    "id" => animal.id.insert(0, cell.to_string()),
                     "born" => {
                         animal.born = cell
                             .get_datetime()
@@ -199,14 +218,20 @@ fn import_flok(form: Arc<Mutex<flok_form::FlokForm>>) -> Result<()> {
                     "sire" => animal.sire = some_string(cell.to_string()),
                     "dam" => animal.dam = some_string(cell.to_string()),
                     "sex" => animal.sex = Sex::from(cell.to_string()),
-                    _ => (),
+                    _event => {
+                        animal.events.push(Event {
+                            name: header,
+                            value: cell.to_string(),
+                            date: now,
+                            notes: "".to_string(),
+                        });
+                    }
                 }
             }
-            eprintln!("Animal: {:?}", animal);
-            flok_guard.animals.push(animal);
         }
+        eprintln!("Animal: {:?}", animal);
+        flok_guard.animals.push(animal);
     }
-
     Ok(())
 }
 

@@ -1,14 +1,15 @@
 use anyhow::Result;
-use chrono::{DateTime};
+use chrono::DateTime;
 use enum_ordinalize::Ordinalize;
 use fltk::{
     input::Input,
     menu::Choice,
-    prelude::{InputExt, MenuExt},
+    prelude::{InputExt, WidgetExt,MenuExt},
     widget::Widget,
 };
+use simple_table::joe_table::JoeTable;
 
-use crate::{business_obj::*, flok::*, form::*};
+use crate::{business_obj::*, event_form::EventTableModel, flok::*, form::*};
 
 #[derive(Clone, Default)]
 pub struct DateInput {
@@ -29,7 +30,7 @@ impl From<DateInput> for Input {
     }
 }
 
-pub struct AnimalForm<A: BusinessObject<Type = Animal>> {
+pub struct AnimalForm<A: 'static + BusinessObject<Type = Animal>> {
     pub identity: Input,
     pub sex: Choice,
     pub born: DateInput,
@@ -37,6 +38,7 @@ pub struct AnimalForm<A: BusinessObject<Type = Animal>> {
     pub animal: A,
     pub dame: Input,
     pub sire: Input,
+    pub events: JoeTable<EventTableModel<A>>,
 }
 
 impl<A: BusinessObject<Type = Animal>> Editor<A> for AnimalForm<A> {
@@ -53,9 +55,11 @@ impl<A: BusinessObject<Type = Animal>> Editor<A> for AnimalForm<A> {
             .set_value(&a.exec(|a| a.sire.clone().unwrap_or("".to_string())));
         self.dame
             .set_value(&a.exec(|a| a.dam.clone().unwrap_or("".to_string())));
+        self.events.model.lock().unwrap().animal = a.clone();
     }
 
     fn commit(&mut self) {
+        let e = self.events.model.lock().unwrap().animal.exec(|a|a.events.clone());
         self.animal.exec(|animal| {
             animal.id = self
                 .identity
@@ -75,7 +79,7 @@ impl<A: BusinessObject<Type = Animal>> Editor<A> for AnimalForm<A> {
                 Some(self.dame.value())
             };
             animal.description = self.description.value();
-            animal.events = Vec::default();
+            animal.events = e.clone();
             animal.sex = Sex::from_ordinal(self.sex.value() as i8).unwrap_or_default();
         });
     }
@@ -83,6 +87,9 @@ impl<A: BusinessObject<Type = Animal>> Editor<A> for AnimalForm<A> {
 
 impl<A: BusinessObject<Type = Animal>> AnimalForm<A> {
     pub fn create(animal: A) -> Result<(Self, Widget)> {
+        let events = JoeTable::new(EventTableModel::new(animal.clone()));
+        let mut widget = events.to_widget();
+        widget.set_size(0, 200);
         let form = Self {
             identity: Input::default(),
             sex: {
@@ -94,9 +101,10 @@ impl<A: BusinessObject<Type = Animal>> AnimalForm<A> {
             },
             born: DateInput::default(),
             description: Input::default(),
-            animal,
+            animal: animal.clone(),
             dame: Input::default(),
             sire: Input::default(),
+            events,
         };
 
         let ui = create_form(vec![
@@ -106,6 +114,7 @@ impl<A: BusinessObject<Type = Animal>> AnimalForm<A> {
             ("Description", &form.description),
             ("Sire", &form.sire),
             ("Dame", &form.dame),
+            ("Events", &widget),
         ])?;
 
         Ok((form, ui))

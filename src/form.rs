@@ -13,8 +13,7 @@ const SIZE: i32 = 20;
 pub fn create_form(fields: Vec<(&str, &dyn FromWidget)>) -> Result<Widget> {
     let mut grid = Grid::default();
     grid.set_layout(1 + fields.len() as i32, 2);
-    grid.set_size(0, SIZE * (fields.len() as i32));
-
+    let mut height = 0;
     for (row, field) in fields.into_iter().enumerate() {
         grid.set_widget(&mut Frame::default().with_label(field.0), row, 0)?;
         let mut widget = field.1.to_widget();
@@ -23,10 +22,13 @@ pub fn create_form(fields: Vec<(&str, &dyn FromWidget)>) -> Result<Widget> {
 
         {
             let row = row as i32;
-            grid.set_row_height(row, SIZE);
+            let size = widget.height().max(SIZE);
+            height += size;
+            grid.set_row_height(row, size);
             grid.set_row_weight(row, 0);
         }
     }
+    grid.set_size(0, height);
     grid.end();
     Ok(grid.as_base_widget())
 }
