@@ -6,5 +6,13 @@ The long term plan is to store the JSON in the cloud to allow sharing across dev
 
 There are lots of usability issues. The architecture is still in flux.
 
+Current Features:
+* load
+* save
+* import excel file
+* "lineage report" graph of ancestors
+
+
+
 `cargo run -- --import ./Sheep\ flock\ records.xlsx` for a demo.
 <img width="1217" height="1305" alt="image" src="https://github.com/user-attachments/assets/543bf0b9-c089-4174-99c1-dfc189debc94" />
